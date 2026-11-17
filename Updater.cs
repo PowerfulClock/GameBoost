@@ -12,7 +12,7 @@ namespace GameBoost
     static class Updater
     {
         public const string Current = "5.4";
-        const string Api = "https://api.github.com/repos/PowerfulClock/GameBoost/releases/latest";
+        const string Api = "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/version.json";
         static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameBoost", "update"); } }
 
         static WebClient Client()
@@ -31,16 +31,13 @@ namespace GameBoost
         {
             try
             {
-                string json; using (var w = Client()) { w.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json"; json = w.DownloadString(Api); }
-                var u = new UpdateInfo { Tag = J(json, "tag_name") ?? "", Notes = J(json, "body") ?? "" };
-                Version v; if (!Version.TryParse(u.Tag.TrimStart('v', 'V'), out v)) return null; u.Ver = v;
+                string json; using (var w = Client()) json = w.DownloadString(Api + "?t=" + DateTime.UtcNow.Ticks);
+                var u = new UpdateInfo { Tag = J(json, "version") ?? "", Notes = J(json, "notes") ?? "", Url = J(json, "url"), Sha256 = (J(json, "sha256") ?? "").ToLower() };
+                Version v; if (!Version.TryParse(u.Tag.TrimStart('v', 'V'), out v) || u.Url == null) return null; u.Ver = v;
                 if (v <= Version.Parse(Current)) return null;
-                DateTime pd; if (DateTime.TryParse(J(json, "published_at"), out pd)) u.Published = pd;
-                var asset = Regex.Match(json, "\"name\"\\s*:\\s*\"GameBoost\\.exe\"[\\s\\S]*?\"size\"\\s*:\\s*(\\d+)[\\s\\S]*?\"browser_download_url\"\\s*:\\s*\"([^\"]+)\"");
-                if (!asset.Success) return null;
-                u.Size = long.Parse(asset.Groups[1].Value); u.Url = asset.Groups[2].Value;
-                var sh = Regex.Match(u.Notes, @"sha256:\s*([0-9a-fA-F]{64})"); if (sh.Success) u.Sha256 = sh.Groups[1].Value.ToLower();
-                u.Notes = Regex.Replace(u.Notes, @"\s*sha256:\s*[0-9a-fA-F]{64}\s*", "\n").Trim();
+                if (u.Sha256.Length != 64) u.Sha256 = null;
+                var sz = System.Text.RegularExpressions.Regex.Match(json, "\"size\"\\s*:\\s*(\\d+)"); if (sz.Success) u.Size = long.Parse(sz.Groups[1].Value);
+                DateTime pd; if (DateTime.TryParse(J(json, "date"), out pd)) u.Published = pd;
                 return u;
             }
             catch { return null; }
