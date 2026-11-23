@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -36,7 +37,7 @@ namespace GameBoost
         static readonly object lk = new object();
         // pid -> swapchain -> frame timestamps (QPC ticks, taken from the event itself, not arrival time)
         static Dictionary<int, Dictionary<long, Queue<long>>> frames = new Dictionary<int, Dictionary<long, Queue<long>>>();
-        static readonly long Freq = Stopwatch.Frequency;
+        public static readonly long Freq = Stopwatch.Frequency;
         public static bool Running; public static string Error;
 
         static IntPtr Props()
@@ -106,7 +107,7 @@ namespace GameBoost
                     if (!frames.TryGetValue(pid, out chains)) frames[pid] = chains = new Dictionary<long, Queue<long>>();
                     Queue<long> q; if (!chains.TryGetValue(swap, out q)) chains[swap] = q = new Queue<long>();
                     q.Enqueue(ts);
-                    while (q.Count > 0 && ts - q.Peek() > Freq * 2) q.Dequeue();
+                    while (q.Count > 0 && ts - q.Peek() > Freq * 10) q.Dequeue();
                 }
             }
             catch { }
@@ -132,6 +133,18 @@ namespace GameBoost
             return best;
         }
 
+        // Raw frame timestamps of the busiest swapchain of a process (last ~10 s)
+        public static long[] Stamps(int pid)
+        {
+            lock (lk)
+            {
+                Dictionary<long, Queue<long>> chains; if (!frames.TryGetValue(pid, out chains)) return new long[0];
+                Queue<long> best = null; long now = Stopwatch.GetTimestamp();
+                foreach (var q in chains.Values) { int recent = q.Count(t => now - t < Freq); if (best == null || recent > best.Count(t => now - t < Freq)) best = q; }
+                return best == null ? new long[0] : best.ToArray();
+            }
+        }
+
         // pid > 0: that process. Otherwise the busiest presenting process.
         public static int Fps(int pid, out int usedPid)
         {
@@ -147,55 +160,126 @@ namespace GameBoost
         }
     }
 
-    // Click-through, see-through FPS counter in the top-right corner.
+    // Click-through, see-through performance overlay in the top-right corner.
     class OverlayForm : Form
     {
         public Func<int> TargetPid = () => -1;
-        string text = "FPS --"; double shown;
-        System.Windows.Forms.Timer t;
-        Font font = new Font("Segoe UI Semibold", 20f);
+        System.Windows.Forms.Timer t, st; Font big = new Font("Segoe UI", 22f, FontStyle.Bold), mid = new Font("Segoe UI Semibold", 10.5f), small = new Font("Segoe UI Semibold", 9f);
+        double shown; int fpsNow, low1; double ftNow; int pidUsed = -1;
+        List<double> ft = new List<double>(); List<bool> spikeFlags = new List<bool>();
+        List<DateTime> spikes = new List<DateTime>(); DateTime lastSpike = DateTime.MinValue; double lastSpikeMs; long lastStamp;
+        string[] statLines = new string[0]; Color gpuCol = Color.White, cpuCol = Color.White; bool statBusy;
+        PerformanceCounter cpuCtr; DateTime lastCpuT = DateTime.MinValue; double cpuT = double.NaN;
+        static readonly Color Key = Color.FromArgb(1, 0, 1), Red = Color.FromArgb(255, 80, 80), Org = Color.FromArgb(255, 176, 64), Grn = Color.FromArgb(130, 230, 70), Gry = Color.FromArgb(200, 205, 212);
 
         public OverlayForm()
         {
             FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true;
-            BackColor = Color.Magenta; TransparencyKey = Color.Magenta;
-            StartPosition = FormStartPosition.Manual; Size = new Size(200, 44);
-            DoubleBuffered = true;
+            BackColor = Key; TransparencyKey = Key; StartPosition = FormStartPosition.Manual; Size = new Size(250, 230); DoubleBuffered = true;
+            try { cpuCtr = new PerformanceCounter("Processor Information", "% Processor Utility", "_Total"); cpuCtr.NextValue(); } catch { }
             Reposition();
-            t = new System.Windows.Forms.Timer { Interval = 100 };
-            t.Tick += (s, e) =>
-            {
-                int used; int pid = TargetPid();
-                if (pid <= 0) pid = Native.ForegroundPid();
-                int fps = FpsTracker.Fps(pid, out used);
-                if (fps == 0) fps = FpsTracker.Fps(-1, out used); // nothing from target: use whatever is rendering
-                shown = shown <= 0 || Math.Abs(fps - shown) > 30 ? fps : shown + (fps - shown) * 0.35;
-                string nt = FpsTracker.Running ? "FPS " + (int)Math.Round(shown) : "FPS n/a";
-                if (nt != text) { text = nt; Invalidate(); }
-                TopMost = true; Reposition();
-            };
-            t.Start();
+            t = new System.Windows.Forms.Timer { Interval = 100 }; t.Tick += (s, e) => { Frame(); Invalidate(); TopMost = true; Reposition(); }; t.Start();
+            st = new System.Windows.Forms.Timer { Interval = 1000 }; st.Tick += (s, e) => Stats(); st.Start(); Stats();
         }
 
-        void Reposition() { var wa = Screen.PrimaryScreen.Bounds; var loc = new Point(wa.Right - Width - 12, wa.Top + 8); if (Location != loc) Location = loc; }
-
-        protected override CreateParams CreateParams
+        void Frame()
         {
-            get { var cp = base.CreateParams; cp.ExStyle |= 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8; return cp; } // layered, click-through, toolwindow, noactivate, topmost
+            int used; int pid = TargetPid(); if (pid <= 0) pid = Native.ForegroundPid();
+            int fps = FpsTracker.Fps(pid, out used); if (fps == 0) { fps = FpsTracker.Fps(-1, out used); } else used = pid;
+            pidUsed = used;
+            shown = shown <= 0 || Math.Abs(fps - shown) > 30 ? fps : shown + (fps - shown) * 0.35; fpsNow = (int)Math.Round(shown);
+            var st = used > 0 ? FpsTracker.Stamps(used) : new long[0];
+            if (st.Length < 3) { ft.Clear(); spikeFlags.Clear(); low1 = 0; ftNow = 0; return; }
+            var d = new double[st.Length - 1]; for (int i = 1; i < st.Length; i++) d[i - 1] = (st[i] - st[i - 1]) * 1000.0 / FpsTracker.Freq;
+            var sorted = d.OrderBy(x => x).ToArray(); double med = sorted[sorted.Length / 2];
+            int n1 = Math.Max(1, d.Length / 100); low1 = (int)Math.Round(1000.0 / sorted.Skip(sorted.Length - n1).Average());
+            ftNow = d.Skip(Math.Max(0, d.Length - 10)).Average();
+            // spikes: new frames that took much longer than usual
+            for (int i = 1; i < st.Length; i++)
+            {
+                if (st[i] <= lastStamp) continue;
+                double x = d[i - 1]; if (x > med * 2.2 && x > med + 8) { spikes.Add(DateTime.Now); lastSpike = DateTime.Now; lastSpikeMs = x; }
+            }
+            lastStamp = st[st.Length - 1];
+            spikes.RemoveAll(x => (DateTime.Now - x).TotalSeconds > 60);
+            int take = Math.Min(100, d.Length); ft = d.Skip(d.Length - take).ToList(); spikeFlags = ft.Select(x => x > med * 2.2 && x > med + 8).ToList();
+            tag = med;
         }
+        double tag;
+
+        void Stats()
+        {
+            if (statBusy) return; statBusy = true;
+            new System.Threading.Thread(() =>
+            {
+                var lines = new List<string>(); Color gc = Gry, cc = Gry;
+                var d = Nv.Available ? Nv.Query("temperature.gpu,utilization.gpu,clocks.sm,memory.used,memory.total,power.draw") : null;
+                if (d != null)
+                {
+                    double gt = Nv.Num(d, "temperature.gpu");
+                    lines.Add("GPU  " + F(gt, "°C") + "   " + F(Nv.Num(d, "utilization.gpu"), "%") + "   " + F(Nv.Num(d, "clocks.sm"), " MHz"));
+                    lines.Add("VRAM " + (Nv.Num(d, "memory.used") / 1024).ToString("0.0") + "/" + (Nv.Num(d, "memory.total") / 1024).ToString("0") + " GB   " + F(Nv.Num(d, "power.draw"), " W"));
+                    gc = gt >= 85 ? Red : gt >= 78 ? Org : Gry;
+                }
+                double cu = double.NaN; try { if (cpuCtr != null) cu = Math.Min(100, cpuCtr.NextValue()); } catch { }
+                if ((DateTime.Now - lastCpuT).TotalSeconds > 5) { cpuT = ThermalZone.MaxC(); lastCpuT = DateTime.Now; }
+                lines.Add("CPU  " + F(cu, "%") + (double.IsNaN(cpuT) ? "" : "   " + F(cpuT, "°C")));
+                cc = !double.IsNaN(cpuT) && cpuT >= 90 ? Red : Gry;
+                try
+                {
+                    var ci = new Microsoft.VisualBasic.Devices.ComputerInfo();
+                    double tot = ci.TotalPhysicalMemory / 1073741824.0, av = ci.AvailablePhysicalMemory / 1073741824.0;
+                    lines.Add("RAM  " + (tot - av).ToString("0.0") + "/" + tot.ToString("0") + " GB");
+                }
+                catch { }
+                try { BeginInvoke((Action)(() => { statLines = lines.ToArray(); gpuCol = gc; cpuCol = cc; statBusy = false; })); } catch { statBusy = false; }
+            }) { IsBackground = true }.Start();
+        }
+        static string F(double v, string u) { return double.IsNaN(v) ? "-" : v.ToString("0") + u; }
+
+        void Reposition() { var wa = Screen.PrimaryScreen.Bounds; var loc = new Point(wa.Right - Width - 10, wa.Top + 8); if (Location != loc) Location = loc; }
+        protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ExStyle |= 0x80000 | 0x20 | 0x80 | 0x8000000 | 0x8; return cp; } }
         protected override bool ShowWithoutActivation { get { return true; } }
+
+        void Txt(Graphics g, string s, Font f, Color c, float right, float y)
+        {
+            var sz = g.MeasureString(s, f); float x = right - sz.Width;
+            using (var sh = new SolidBrush(Color.FromArgb(12, 12, 12)))
+                for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) if (dx != 0 || dy != 0) g.DrawString(s, f, sh, x + dx, y + dy);
+            using (var b = new SolidBrush(c)) g.DrawString(s, f, b, x, y);
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            var g = e.Graphics;
-            g.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit; // crisp edges with color-key transparency
-            var sz = g.MeasureString(text, font);
-            float x = Width - sz.Width - 2, y = 2;
-            using (var shadow = new SolidBrush(Color.FromArgb(20, 20, 20)))
-                for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) if (dx != 0 || dy != 0) g.DrawString(text, font, shadow, x + dx, y + dy);
-            g.DrawString(text, font, Brushes.White, x, y);
+            var g = e.Graphics; g.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit; g.SmoothingMode = SmoothingMode.None;
+            float R = Width - 4, y = 0;
+            bool active = FpsTracker.Running && fpsNow > 0;
+            bool spikeNow = (DateTime.Now - lastSpike).TotalSeconds < 1.5;
+            Txt(g, active ? "FPS " + fpsNow : "FPS --", big, spikeNow ? Red : Color.White, R, y); y += 38;
+            if (active) { Txt(g, "1% low " + low1 + "   " + ftNow.ToString("0.0") + " ms", small, low1 < fpsNow * 0.6 ? Org : Gry, R, y); y += 18; }
+            // frametime graph
+            if (ft.Count > 5)
+            {
+                float gw = 170, gh = 26, gx = R - gw, gy = y + 2;
+                double scale = Math.Max(tag * 3, ft.Max()); scale = Math.Max(scale, 8);
+                using (var p = new Pen(Color.FromArgb(12, 12, 12), 1)) g.DrawRectangle(p, gx - 1, gy - 1, gw + 1, gh + 1);
+                float bw = gw / 100f;
+                for (int i = 0; i < ft.Count; i++)
+                {
+                    float h = (float)Math.Max(1, Math.Min(gh, ft[i] / scale * gh)); float x = gx + gw - (ft.Count - i) * bw;
+                    using (var b = new SolidBrush(spikeFlags[i] ? Red : Color.FromArgb(150, 210, 110))) g.FillRectangle(b, x, gy + gh - h, Math.Max(1, bw), h);
+                }
+                y += gh + 8;
+            }
+            if (spikeNow) { Txt(g, "▼ STUTTER " + lastSpikeMs.ToString("0") + " ms", small, Red, R, y); y += 17; }
+            else if (spikes.Count > 0) { Txt(g, spikes.Count + " stutter" + (spikes.Count == 1 ? "" : "s") + " in last min", small, Org, R, y); y += 17; }
+            for (int i = 0; i < statLines.Length; i++)
+            {
+                Color c = statLines[i].StartsWith("GPU") ? gpuCol : statLines[i].StartsWith("CPU") ? cpuCol : Gry;
+                Txt(g, statLines[i], small, c, R, y); y += 17;
+            }
         }
 
-        protected override void Dispose(bool d) { if (d) { t.Dispose(); font.Dispose(); } base.Dispose(d); }
+        protected override void Dispose(bool d) { if (d) { t.Dispose(); st.Dispose(); big.Dispose(); mid.Dispose(); small.Dispose(); if (cpuCtr != null) cpuCtr.Dispose(); } base.Dispose(d); }
     }
 }

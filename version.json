@@ -1,8 +1,8 @@
 {
-  "version": "5.7",
+  "version": "5.8",
   "date": "2026-11-23",
-  "notes": "The Update tab now appears while GameBoost is open (checks every 5 minutes), so you no longer need to restart the app to see new versions.",
-  "size": 319488,
-  "sha256": "6a56959923b275709b6d549379501ba2cf4d4e7385ac015bdfd33527ee9fe757",
-  "url": "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/releases/GameBoost-5.7.exe"
+  "notes": "New Performance overlay (Ctrl+Shift+O): FPS every 0.1 s, 1% low, frame time, a live frame-time graph that marks stutters in red, stutter counter, plus GPU temp/load/clock, VRAM, power, CPU load/temp and RAM in the top-right corner.",
+  "size": 325120,
+  "sha256": "fbbe2c83338a0f09f558ffa32204033cdedee736e7c3f788d42838a994052421",
+  "url": "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/releases/GameBoost-5.8.exe"
 }

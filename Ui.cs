@@ -449,9 +449,18 @@ namespace GameBoost
             Opacity = 0;
         }
 
+        [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mod, uint vk);
+        [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == 0x0312 && m.WParam.ToInt32() == 77) { tOverlay.Checked = !tOverlay.Checked; ToggleOverlay(); }
+            base.WndProc(ref m);
+        }
+        protected override void OnHandleDestroyed(EventArgs e) { UnregisterHotKey(Handle, 77); base.OnHandleDestroyed(e); }
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            RegisterHotKey(Handle, 77, 0x0002 | 0x0004 | 0x4000, 0x4F); // Ctrl+Shift+O
             try { int on = 1; DwmSetWindowAttribute(Handle, 20, ref on, 4); int cap = Theme.Bg.R | (Theme.Bg.G << 8) | (Theme.Bg.B << 16); DwmSetWindowAttribute(Handle, 35, ref cap, 4); } catch { }
         }
 
@@ -506,7 +515,7 @@ namespace GameBoost
             bFree.Click += (s, e) => FreeRam();
             tOverlay = new ToggleSwitch { Location = new Point(390, 173) };
             tOverlay.Toggled += (s, e) => ToggleOverlay();
-            var t3 = L("FPS overlay", 10f, Theme.Fg); t3.Location = new Point(450, 176);
+            var t3 = L("Performance overlay  (Ctrl+Shift+O)", 10f, Theme.Fg); t3.Location = new Point(450, 176);
             hero.Controls.AddRange(new Control[] { power, t1, gmStatus, t2, cbGame, bFree, tOverlay, t3 });
             dash.Controls.Add(hero);
 
@@ -721,9 +730,9 @@ namespace GameBoost
             {
                 if (!FpsTracker.Start()) { tOverlay.Checked = false; Notify("FPS counter failed: " + FpsTracker.Error, Theme.Warn); return; }
                 overlay = new OverlayForm(); overlay.TargetPid = GamePid; overlay.Show();
-                Notify("FPS overlay on (top-right)");
+                Notify("Performance overlay on (Ctrl+Shift+O to toggle)");
             }
-            else if (!tOverlay.Checked && overlay != null) { overlay.Close(); overlay = null; FpsTracker.Stop(); Notify("FPS overlay off", Theme.Dim); }
+            else if (!tOverlay.Checked && overlay != null) { overlay.Close(); overlay = null; FpsTracker.Stop(); Notify("Performance overlay off", Theme.Dim); }
         }
 
         void FreeRam()
