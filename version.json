@@ -1,8 +1,8 @@
 {
-  "version": "5.9",
+  "version": "6.0",
   "date": "2026-11-23",
-  "notes": "Overlay accuracy fixes: frame timing now uses the high-precision clock directly (FPS drops to 0 correctly when a game closes), no false stutters when the overlay starts or you switch games, and stats refresh every 2 s to avoid causing hitches.",
-  "size": 325632,
-  "sha256": "d3ccfe75ce0be2dad92bdfc5ae1d26cd65e7946a79f0433fe7c073a9818a45b6",
-  "url": "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/releases/GameBoost-5.9.exe"
+  "notes": "GameBoost now goes into low-power mode when minimized: it stops refreshing its window, drops to the lowest priority, uses Windows Efficiency mode and frees its memory, so games get the CPU. Gaming Mode, the overlay and overclock safety keep working.",
+  "size": 326656,
+  "sha256": "7f7d9fde7f9db0939e0e5f65ba3b97cf2e956ebdc55e2a643e4cb5a5a8646775",
+  "url": "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/releases/GameBoost-6.0.exe"
 }

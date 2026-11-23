@@ -251,7 +251,7 @@ namespace GameBoost
     class Card : Panel
     {
         static readonly List<Card> all = new List<Card>();
-        static Timer poll;
+        static Timer poll; public static bool Paused;
         float hover, hoverT; public Color Glow = Theme.Accent; public int Radius = 14;
         public Card()
         {
@@ -265,7 +265,7 @@ namespace GameBoost
                     foreach (var c in all.ToArray())
                     {
                         if (c.IsDisposed) { all.Remove(c); continue; }
-                        if (!c.Visible || !c.IsHandleCreated) continue;
+                        if (Paused || !c.Visible || !c.IsHandleCreated) continue;
                         bool inside = c.ClientRectangle.Contains(c.PointToClient(Control.MousePosition));
                         float t = inside ? 1 : 0;
                         if (Math.Abs(c.hoverT - t) > .001f) { c.hoverT = t; c.Animate(); }
@@ -447,13 +447,14 @@ namespace GameBoost
             FormClosing += (s, e) => { if (!restartingForUpdate && scanType != 0 && MessageBox.Show(this, "A virus scan is still running. It will keep running in Windows after GameBoost closes. Close anyway?", "GameBoost", MessageBoxButtons.YesNo) != DialogResult.Yes) { e.Cancel = true; return; } if (powerChanged) NvOc.SetPower(powerDefault); if (gCore != 0 || gMem != 0) { NvOc.SetDelta(NvOc.DOM_CORE, 0); NvOc.SetDelta(NvOc.DOM_MEM, 0); } if (session != null) session.Stop(); if (GamingMode.Active) GamingMode.Disable(Log); if (FpsTracker.Running) FpsTracker.Stop(); };
             Shown += (s, e) => { Updater.CleanupOld(); StartUpdateWatch(); LayoutPages(); ShowPage(0); RefreshData(); StartDetect(); Anim.Tween(0, 1, 350, v => Opacity = v); };
             Opacity = 0;
+            Resize += (s, e) => SetLowPower(WindowState == FormWindowState.Minimized);
         }
 
         [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mod, uint vk);
         [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == 0x0312 && m.WParam.ToInt32() == 77) { tOverlay.Checked = !tOverlay.Checked; ToggleOverlay(); }
+            if (m.Msg == 0x0312 && m.WParam.ToInt32() == 77) { tOverlay.Checked = !tOverlay.Checked; ToggleOverlay(); if (lowPower) { lowPower = false; SetLowPower(true); } }
             base.WndProc(ref m);
         }
         protected override void OnHandleDestroyed(EventArgs e) { UnregisterHotKey(Handle, 77); base.OnHandleDestroyed(e); }
