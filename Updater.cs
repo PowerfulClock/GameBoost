@@ -11,7 +11,7 @@ namespace GameBoost
 
     static class Updater
     {
-        public const string Current = "5.4";
+        public const string Current = "5.5";
         const string Api = "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/version.json";
         static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameBoost", "update"); } }
 

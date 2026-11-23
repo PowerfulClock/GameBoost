@@ -214,7 +214,7 @@ namespace GameBoost
     // Stat card with animated ring + sparkline
     class StatCard : AnimControl
     {
-        public string Title, Sub = ""; public Color Col; float v, target; string suffix = "%";
+        public string Title, Sub = ""; public Color Col; float v, target; public string suffix = "%"; public string Override;
         Queue<float> hist = new Queue<float>();
         public StatCard(string title, Color c) { Title = title; Col = c; Size = new Size(260, 120); Cursor = Cursors.Default; BackColor = Theme.Bg; }
         public void Set(float val, string sub) { target = Math.Max(0, Math.Min(100, val)); Sub = sub; hist.Enqueue(target); while (hist.Count > 40) hist.Dequeue(); Kick(); }
@@ -242,7 +242,7 @@ namespace GameBoost
             using (var pen = new Pen(Theme.Card2, 7)) g.DrawEllipse(pen, rr);
             using (var pen = new Pen(Col, 7) { StartCap = LineCap.Round, EndCap = LineCap.Round }) if (v > .5f) g.DrawArc(pen, rr, -90, 360 * v / 100f);
             using (var f = Theme.F(9.5f)) using (var b = new SolidBrush(Theme.Dim)) g.DrawString(Title, f, b, 16, 14);
-            using (var f = Theme.F(24f, true)) using (var b = new SolidBrush(Theme.Fg)) g.DrawString(v.ToString("0") + suffix, f, b, 12, 32);
+            using (var f = Theme.F(24f, true)) using (var b = new SolidBrush(Theme.Fg)) g.DrawString(Override ?? (v.ToString("0") + suffix), f, b, 12, 32);
             using (var f = Theme.F(8.5f)) using (var b = new SolidBrush(Theme.Dim)) g.DrawString(Sub, f, b, 16, 72);
         }
     }
@@ -410,7 +410,7 @@ namespace GameBoost
 
         public MainForm()
         {
-            Text = "GameBoost"; Size = new Size(1220, 800); MinimumSize = new Size(1020, 680); StartPosition = FormStartPosition.CenterScreen;
+            Text = "GameBoost"; Size = new Size(1220, 900); MinimumSize = new Size(1020, 680); StartPosition = FormStartPosition.CenterScreen;
             BackColor = Theme.Bg; ForeColor = Theme.Fg; Font = Theme.F(9.5f); DoubleBuffered = true;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
@@ -492,6 +492,7 @@ namespace GameBoost
             cCpu = new StatCard("CPU", Theme.Blue); cGpu = new StatCard("GPU", Theme.Accent); cRam = new StatCard("Memory", Theme.Pink);
             dash.Controls.AddRange(new Control[] { cCpu, cGpu, cRam });
 
+            BuildTemps();
             hero = new Card { Height = 230 };
             power = new PowerButton { Location = new Point(20, 30) };
             power.Click += (s, e) => ToggleGaming();
@@ -523,8 +524,9 @@ namespace GameBoost
             if (dash == null) return;
             int w = dash.Width, gap = 16, cw = (w - gap * 2) / 3;
             cCpu.Bounds = new Rectangle(0, 0, cw, 124); cGpu.Bounds = new Rectangle(cw + gap, 0, cw, 124); cRam.Bounds = new Rectangle((cw + gap) * 2, 0, w - (cw + gap) * 2, 124);
-            hero.Bounds = new Rectangle(0, 140, w, 230);
-            logCard.Bounds = new Rectangle(0, 386, w, Math.Max(80, dash.Height - 386 - 24));
+            LayoutTemps(w, 140);
+            hero.Bounds = new Rectangle(0, 280, w, 230);
+            logCard.Bounds = new Rectangle(0, 526, w, Math.Max(80, dash.Height - 526 - 24));
         }
 
         // ---------- Processes ----------

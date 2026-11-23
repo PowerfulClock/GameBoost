@@ -1,8 +1,8 @@
 {
-  "version": "5.4",
-  "date": "2026-11-17",
-  "notes": "First version with built-in updates.",
-  "size": 311808,
-  "sha256": "c826fd969b4e6452bb2443067649adf9963404bac1c94a7f869fc3c68b93f305",
+  "version": "5.5",
+  "date": "2026-11-23",
+  "notes": "New: Temperatures on the Dashboard - GPU core, CPU, hottest drive (NVMe/SSD) and GPU fan, color-coded against each part's safe limit.",
+  "size": 316928,
+  "sha256": "e2eba03cb541424d2b37087322afda12593529aed18bc093d8da730e9d79e947",
   "url": "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/GameBoost.exe"
 }
