@@ -65,7 +65,7 @@ namespace GameBoost
             EnableTraceEx2(session, ref g1, 1, 4, 0, 0, 0, IntPtr.Zero);
             EnableTraceEx2(session, ref g2, 1, 4, 0, 0, 0, IntPtr.Zero);
             cbKeep = OnEvent;
-            var lf = new EVENT_TRACE_LOGFILE { LoggerName = SESSION, ProcessTraceMode = 0x100 | 0x10000000, Callback = cbKeep };
+            var lf = new EVENT_TRACE_LOGFILE { LoggerName = SESSION, ProcessTraceMode = 0x100 | 0x10000000 | 0x1000, Callback = cbKeep };
             consumer = OpenTrace(ref lf);
             if (consumer == ulong.MaxValue) { Error = "OpenTrace failed"; Stop(); return false; }
             thread = new Thread(() => { try { ProcessTrace(new[] { consumer }, 1, IntPtr.Zero, IntPtr.Zero); } catch { } }) { IsBackground = true };
@@ -179,7 +179,7 @@ namespace GameBoost
             try { cpuCtr = new PerformanceCounter("Processor Information", "% Processor Utility", "_Total"); cpuCtr.NextValue(); } catch { }
             Reposition();
             t = new System.Windows.Forms.Timer { Interval = 100 }; t.Tick += (s, e) => { Frame(); Invalidate(); TopMost = true; Reposition(); }; t.Start();
-            st = new System.Windows.Forms.Timer { Interval = 1000 }; st.Tick += (s, e) => Stats(); st.Start(); Stats();
+            st = new System.Windows.Forms.Timer { Interval = 2000 }; st.Tick += (s, e) => Stats(); st.Start(); Stats();
         }
 
         void Frame()
@@ -195,6 +195,7 @@ namespace GameBoost
             int n1 = Math.Max(1, d.Length / 100); low1 = (int)Math.Round(1000.0 / sorted.Skip(sorted.Length - n1).Average());
             ftNow = d.Skip(Math.Max(0, d.Length - 10)).Average();
             // spikes: new frames that took much longer than usual
+            if (used != spikePid) { spikePid = used; lastStamp = st[st.Length - 1]; spikes.Clear(); } // don't count old history as new stutters
             for (int i = 1; i < st.Length; i++)
             {
                 if (st[i] <= lastStamp) continue;
@@ -205,7 +206,7 @@ namespace GameBoost
             int take = Math.Min(100, d.Length); ft = d.Skip(d.Length - take).ToList(); spikeFlags = ft.Select(x => x > med * 2.2 && x > med + 8).ToList();
             tag = med;
         }
-        double tag;
+        double tag; int spikePid = -1;
 
         void Stats()
         {
@@ -227,14 +228,16 @@ namespace GameBoost
                 cc = !double.IsNaN(cpuT) && cpuT >= 90 ? Red : Gry;
                 try
                 {
-                    var ci = new Microsoft.VisualBasic.Devices.ComputerInfo();
-                    double tot = ci.TotalPhysicalMemory / 1073741824.0, av = ci.AvailablePhysicalMemory / 1073741824.0;
+                    var m = new MEMSTAT { len = (uint)Marshal.SizeOf(typeof(MEMSTAT)) }; GlobalMemoryStatusEx(ref m); if (m.total == 0) throw new Exception();
+                    double tot = m.total / 1073741824.0, av = m.avail / 1073741824.0;
                     lines.Add("RAM  " + (tot - av).ToString("0.0") + "/" + tot.ToString("0") + " GB");
                 }
                 catch { }
                 try { BeginInvoke((Action)(() => { statLines = lines.ToArray(); gpuCol = gc; cpuCol = cc; statBusy = false; })); } catch { statBusy = false; }
             }) { IsBackground = true }.Start();
         }
+        [StructLayout(LayoutKind.Sequential)] struct MEMSTAT { public uint len, load; public ulong total, avail, tp, ap, tv, av, ae; }
+        [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx(ref MEMSTAT m);
         static string F(double v, string u) { return double.IsNaN(v) ? "-" : v.ToString("0") + u; }
 
         void Reposition() { var wa = Screen.PrimaryScreen.Bounds; var loc = new Point(wa.Right - Width - 10, wa.Top + 8); if (Location != loc) Location = loc; }

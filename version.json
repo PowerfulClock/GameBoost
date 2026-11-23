@@ -1,8 +1,8 @@
 {
-  "version": "5.8",
+  "version": "5.9",
   "date": "2026-11-23",
-  "notes": "New Performance overlay (Ctrl+Shift+O): FPS every 0.1 s, 1% low, frame time, a live frame-time graph that marks stutters in red, stutter counter, plus GPU temp/load/clock, VRAM, power, CPU load/temp and RAM in the top-right corner.",
-  "size": 325120,
-  "sha256": "fbbe2c83338a0f09f558ffa32204033cdedee736e7c3f788d42838a994052421",
-  "url": "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/releases/GameBoost-5.8.exe"
+  "notes": "Overlay accuracy fixes: frame timing now uses the high-precision clock directly (FPS drops to 0 correctly when a game closes), no false stutters when the overlay starts or you switch games, and stats refresh every 2 s to avoid causing hitches.",
+  "size": 325632,
+  "sha256": "d3ccfe75ce0be2dad92bdfc5ae1d26cd65e7946a79f0433fe7c073a9818a45b6",
+  "url": "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/releases/GameBoost-5.9.exe"
 }
