@@ -789,11 +789,38 @@ namespace GameBoost
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // Require administrator: relaunch elevated if needed
+            if (!new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))
+            {
+                try { Process.Start(new ProcessStartInfo(Application.ExecutablePath) { Verb = "runas", UseShellExecute = true }); }
+                catch { MessageBox.Show("GameBoost needs administrator access to manage performance, GPU and security settings.\n\nRight-click GameBoost.exe and choose 'Run as administrator', or click Yes when Windows asks.", "GameBoost", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                return;
+            }
             var splash = new Splash(); splash.Show();
             var sw = Stopwatch.StartNew();
             Action<int> pump = ms => { var t = Stopwatch.StartNew(); while (t.ElapsedMilliseconds < ms) { Application.DoEvents(); System.Threading.Thread.Sleep(10); } };
             Anim.Tween(0, 1, 300, v => splash.Opacity = v);
             pump(250);
+            // First launch after installing from a zip: jump straight to the newest version
+            string marker = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameBoost", "installed_" + Updater.Current + ".txt");
+            if (!System.IO.File.Exists(marker))
+            {
+                try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(marker)); System.IO.File.WriteAllText(marker, DateTime.Now.ToString("o")); } catch { }
+                splash.Step("Checking for the latest version...", .1f); pump(100);
+                UpdateInfo u = null; var th = new System.Threading.Thread(() => u = Updater.Check()) { IsBackground = true }; th.Start();
+                var sw0 = Stopwatch.StartNew(); while (th.IsAlive && sw0.ElapsedMilliseconds < 8000) { Application.DoEvents(); System.Threading.Thread.Sleep(15); }
+                if (u != null)
+                {
+                    string file = null; string err = null; float prog = 0;
+                    var dl = new System.Threading.Thread(() => { try { file = Updater.Download(u, (f, g) => prog = f); } catch (Exception ex) { err = ex.Message; } }) { IsBackground = true }; dl.Start();
+                    while (dl.IsAlive) { splash.Step("Installing v" + u.Ver + "...  " + (int)(prog * 100) + "%", .1f + prog * .85f); Application.DoEvents(); System.Threading.Thread.Sleep(15); }
+                    if (file != null)
+                    {
+                        splash.Step("Restarting on v" + u.Ver + "...", 1f); pump(600);
+                        try { Updater.InstallAndRestart(file); return; } catch { }
+                    }
+                }
+            }
             splash.Step("Reading system counters...", .3f); pump(250);
             splash.Step("Loading GPU monitor...", .55f); pump(100);
             var main = new MainForm();

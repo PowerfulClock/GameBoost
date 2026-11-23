@@ -11,8 +11,9 @@ namespace GameBoost
 
     static class Updater
     {
-        public const string Current = "5.5";
-        const string Api = "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/version.json";
+        public const string Current = "5.6";
+        const string Api = "https://api.github.com/repos/PowerfulClock/GameBoost/contents/version.json";
+        const string RawApi = "https://raw.githubusercontent.com/PowerfulClock/GameBoost/main/version.json";
         static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameBoost", "update"); } }
 
         static WebClient Client()
@@ -31,7 +32,7 @@ namespace GameBoost
         {
             try
             {
-                string json; using (var w = Client()) json = w.DownloadString(Api + "?t=" + DateTime.UtcNow.Ticks);
+                string json; try { using (var w = Client()) { w.Headers[HttpRequestHeader.Accept] = "application/vnd.github.raw"; json = w.DownloadString(Api); } } catch { using (var w = Client()) json = w.DownloadString(RawApi); }
                 var u = new UpdateInfo { Tag = J(json, "version") ?? "", Notes = J(json, "notes") ?? "", Url = J(json, "url"), Sha256 = (J(json, "sha256") ?? "").ToLower() };
                 Version v; if (!Version.TryParse(u.Tag.TrimStart('v', 'V'), out v) || u.Url == null) return null; u.Ver = v;
                 if (v <= Version.Parse(Current)) return null;
