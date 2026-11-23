@@ -445,7 +445,7 @@ namespace GameBoost
             mon.Sample();
             timer = new Timer { Interval = 1500 }; timer.Tick += (s, e) => RefreshData(); timer.Start();
             FormClosing += (s, e) => { if (!restartingForUpdate && scanType != 0 && MessageBox.Show(this, "A virus scan is still running. It will keep running in Windows after GameBoost closes. Close anyway?", "GameBoost", MessageBoxButtons.YesNo) != DialogResult.Yes) { e.Cancel = true; return; } if (powerChanged) NvOc.SetPower(powerDefault); if (gCore != 0 || gMem != 0) { NvOc.SetDelta(NvOc.DOM_CORE, 0); NvOc.SetDelta(NvOc.DOM_MEM, 0); } if (session != null) session.Stop(); if (GamingMode.Active) GamingMode.Disable(Log); if (FpsTracker.Running) FpsTracker.Stop(); };
-            Shown += (s, e) => { Updater.CleanupOld(); CheckForUpdate(); LayoutPages(); ShowPage(0); RefreshData(); StartDetect(); Anim.Tween(0, 1, 350, v => Opacity = v); };
+            Shown += (s, e) => { Updater.CleanupOld(); StartUpdateWatch(); LayoutPages(); ShowPage(0); RefreshData(); StartDetect(); Anim.Tween(0, 1, 350, v => Opacity = v); };
             Opacity = 0;
         }
 

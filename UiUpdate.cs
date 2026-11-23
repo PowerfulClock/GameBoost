@@ -19,8 +19,16 @@ namespace GameBoost
             new Thread(() =>
             {
                 var u = Updater.Check(); if (u == null) return;
-                try { BeginInvoke((Action)(() => { upd = u; ShowUpdateNav(); })); } catch { }
+                try { BeginInvoke((Action)(() => { if (updating || (upd != null && u.Ver <= upd.Ver)) return; upd = u; ShowUpdateNav(); })); } catch { }
             }) { IsBackground = true }.Start();
+        }
+
+        System.Windows.Forms.Timer updTimer;
+        void StartUpdateWatch()
+        {
+            CheckForUpdate();
+            updTimer = new System.Windows.Forms.Timer { Interval = 5 * 60 * 1000 }; // every 5 minutes
+            updTimer.Tick += (s, e) => CheckForUpdate(); updTimer.Start();
         }
 
         void ShowUpdateNav()
